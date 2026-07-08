@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FWSWeb Tactical AR</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        * { box-sizing: border-box; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #0a0a0a; overflow: hidden; font-family: Impact, sans-serif; }
+        
+        /* Camera & Canvas */
+        #video-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); }
+        #ar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; touch-action: none; }
+        
+        /* Vision Filters */
+        .vision-0 { filter: none; }
+        .vision-1 { filter: hue-rotate(90deg) saturate(300%) contrast(150%); } 
+        .vision-2 { filter: grayscale(100%) invert(100%) contrast(150%); } 
+        .vision-3 { filter: sepia(100%) hue-rotate(80deg) saturate(300%) contrast(120%); } 
+
+        /* Start Screen */
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .title { color: #0f0; font-size: 6vw; text-align: center; text-shadow: 0 0 15px #0f0; margin-bottom: 10px; }
+        .subtitle { color: #6f6; font-size: 3vw; text-align: center; margin-bottom: 50px; }
+        
+        /* Aggressive Start Button */
+        .init-btn { background: rgba(0,255,0,0.1); border: 2px solid #0f0; color: #0f0; font-family: Impact; font-size: 30px; padding: 15px 50px; cursor: pointer; text-transform: uppercase; transition: 0.2s; box-shadow: 0 0 15px #0f0, inset 0 0 15px rgba(0,255,0,0.2); position: relative; overflow: hidden; }
+        .init-btn::before, .init-btn::after { content: ''; position: absolute; width: 15px; height: 15px; }
+        .init-btn::before { top: -2px; left: -2px; border-top: 4px solid #fff; border-left: 4px solid #fff; }
+        .init-btn::after { bottom: -2px; right: -2px; border-bottom: 4px solid #fff; border-right: 4px solid #fff; }
+        .init-btn:active { background: #0f0; color: #000; box-shadow: 0 0 30px #0f0; }
+
+        /* UI Overlay */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: none; flex-direction: column; justify-content: space-between; pointer-events: none; }
+        .top-bar { text-align: center; padding-top: 20px; }
+        .slide-title { color: #0f0; font-size: 30px; text-shadow: 2px 2px 0 #000; }
+        
+        .bottom-section { display: flex; flex-direction: column; align-items: center; padding-bottom: 20px; width: 100%; }
+        
+        /* Fixed Text Container */
+        .slide-desc-container { height: 100px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; width: 90%; }
+        
+        /* Monospace font fix & Black Stroke for light backgrounds */
+        .slide-desc { 
+            color: #0f0; font-size: 20px; text-align: center; line-height: 1.4; 
+            text-shadow: 2px 2px 0 #000; margin: 0; 
+            font-family: "Courier New", Courier, monospace; letter-spacing: 1px; font-weight: bold;
+            -webkit-text-stroke: 1px #000; /* Чорна обводка для читабельності на світлому фоні */
+        }
+        
+        /* Aggressive Sci-Fi Buttons */
+        .btn-panel { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+        .sci-fi-btn { 
+            background: rgba(10, 10, 10, 0.8); border: 2px solid var(--neon); color: var(--neon); 
+            font-family: Impact; font-size: 20px; padding: 12px 25px; cursor: pointer; transition: 0.2s; 
+            box-shadow: 0 0 10px var(--neon), inset 0 0 10px rgba(0,0,0,0.8); text-shadow: 0 0 5px var(--neon);
+            position: relative; overflow: visible; text-transform: uppercase;
+        }
+        .sci-fi-btn::before { content: ''; position: absolute; top: -3px; left: -3px; width: 10px; height: 10px; border-top: 3px solid #fff; border-left: 3px solid #fff; pointer-events: none; }
+        .sci-fi-btn::after { content: ''; position: absolute; bottom: -3px; right: -3px; width: 10px; height: 10px; border-bottom: 3px solid #fff; border-right: 3px solid #fff; pointer-events: none; }
+        .sci-fi-btn:active { transform: scale(0.95); background: var(--neon); color: #000; box-shadow: 0 0 25px var(--neon); }
+        
+        .btn-map { --neon: #0f0; }
+        .btn-vision { --neon: #0ff; }
+        .btn-reload { --neon: #fc0; }
+        .btn-exit { --neon: #f33; }
+
+        /* Map Modal */
+        #map-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20; display: none; flex-direction: column; }
+        #leaflet-map { flex-grow: 1; width: 100%; }
+        .close-map-btn { background: #111; color: #0f0; border: none; border-top: 2px solid #0f0; padding: 15px; font-family: Impact; font-size: 24px; cursor: pointer; text-transform: uppercase; }
+        
+        /* Map Markers CSS */
+        .fws-icon { width: 28px; height: 28px; display: flex; justify-content: center; align-items: center; position: relative; }
+        .shape { box-sizing: border-box; border: 2px solid var(--color); position: relative; }
+        .PG-shape { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(to right, white 50%, var(--color) 50%); }
+        .PG-shape::before { content: ''; position: absolute; left: -6px; top: 12px; width: 6px; height: 3px; background: var(--color); }
+        .PG-shape::after { content: ''; position: absolute; right: -6px; top: 12px; width: 6px; height: 3px; background: var(--color); }
+        .PP-shape { width: 28px; height: 28px; border: none; background-image: linear-gradient(to right, transparent 30%, var(--color) 30%, var(--color) 35%, transparent 35%, transparent 65%, var(--color) 65%, var(--color) 70%, transparent 70%), linear-gradient(to bottom, transparent 30%, var(--color) 30%, var(--color) 35%, transparent 35%, transparent 65%, var(--color) 65%, var(--color) 70%, transparent 70%); }
+        .PV-shape { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; background: #222; }
+        .VV-shape { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: white; }
+        .VV-shape::after { content: ''; width: 12px; height: 12px; background: var(--color); border-radius: 50%; }
+        .GR-shape { width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: white; }
+        .label-container { position: absolute; top: -25px; font-size: 12px; color: white; white-space: nowrap; background: rgba(0,0,0,0.8); padding: 2px 4px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <audio id="bg-audio" src="The_Unseen_Hunter.mp3" loop></audio>
+
+    <video id="video-bg" autoplay playsinline muted></video>
+    
+    <canvas id="ar-canvas"></canvas>
+
+    <div id="start-screen">
+        <div class="title">FWSWEB TACTICAL SYSTEM</div>
+        <div class="subtitle">AUTHORIZATION CONFIRMED | KARMA: 100% SECURE</div>
+        <button class="init-btn" onclick="startApp()">INITIATE</button>
+    </div>
+
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div id="slide-title" class="slide-title"></div>
+        </div>
+        <div class="bottom-section">
+            <div class="slide-desc-container">
+                <div id="slide-desc" class="slide-desc"></div>
+            </div>
+            <div class="btn-panel">
+                <button class="sci-fi-btn btn-map" onclick="toggleMap()">MAP</button>
+                <button class="sci-fi-btn btn-vision" id="btn-vision" onclick="changeVision()">VISION: 01</button>
+                <button class="sci-fi-btn btn-reload" onclick="reloadMarkers()">RELOAD</button>
+                <button class="sci-fi-btn btn-exit" onclick="location.reload()">EXIT</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="map-modal">
+        <div id="leaflet-map"></div>
+        <button class="close-map-btn" onclick="toggleMap()">ПОВЕРНУТИСЯ ДО AR</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- State Variables ---
+        let userLat = 49.9935, userLon = 36.2304;
+        let userHeading = 0.0, userPitch = 0.0;
+        let fwsObjects = [];
+        let visionMode = 0;
+        let isRunning = false;
+        let mapObj = null;
+        let mapMarkers = [];
+        let hasGyro = false; 
+
+        // Slides Data
+        const slides = [
+            ["FWSWEB AR-MODULE", "СИСТЕМА ДОПОВНЕНОЇ РЕАЛЬНОСТІ ДЛЯ БОЙОВИХ УМОВ\nПРОЕКЦІЯ FWS OBJECTS У REAL-TIME НА ЕКРАН ПРИСТРОЮ\nВИ ВТРАЧАЄТЕ РІВНО НУЛЬ ХВИЛИН НА ПОШУК ВОДИ"],
+            ["AI-ASSISTANT", "БЕЗПЕРЕРВНИЙ АУДИТ ТА АНАЛІЗ БАЗИ ДАНИХ ШТУЧНИМ ІНТЕЛЕКТОМ\nАВТОМАТИЧНЕ ВИЯВЛЕННЯ АНОМАЛІЙ ТА РИЗИКІВ ВІДМОВИ ОБЛАДНАННЯ\nФОКУС ЛИШЕ НА ТИХ ОБ'ЄКТАХ, ЩО ДІЙСНО ПОТРЕБУЮТЬ УВАГИ"],
+            ["KARMA ENGINE", "БАГАТОРІВНЕВА СИСТЕМА ДОВІРИ ТА РЕПУТАЦІЇ КОРИСТУВАЧА\nМИТТЄВЕ БЛОКУВАННЯ НЕДОСТОВІРНИХ АБО ФЕЙКОВИХ ДАНИХ\nВАГА КОЖНОЇ ДІЇ В ІСТОРІЇ ФОРМУЄ ВАШ РІВЕНЬ ДОСТУПУ"],
+            ["FWSWEB TACTICAL", "УЛЬТИМАТИВНЕ РІШЕННЯ ДЛЯ ЛОГІСТИКИ ПОЖЕЖОГАСІННЯ\nМАКСИМАЛЬНА ТОЧНІСТЬ ІНФОРМАЦІЇ ТА ШВИДКІСТЬ ПРИЙНЯТТЯ РІШЕНЬ\nРОЗРОБЛЕНО ДЛЯ ЕКСТРЕМАЛЬНИХ ТА НЕПЕРЕДБАЧУВАНИХ СИТУАЦІЙ"]
+        ];
+
+        // --- Core Functions ---
+        function generateMarkers() {
+            let markers = [];
+            let types = ['ПГ', 'ПВ', 'ПП', 'ВБ', 'Г'];
+            let states = [
+                {name: 'Справний', color: '#0096ff', rgb: '0,150,255'},
+                {name: 'Несправний', color: '#ff3232', rgb: '255,50,50'},
+                {name: 'Демонтовано', color: '#969696', rgb: '150,150,150'}
+            ];
+            for(let i=0; i<15; i++) {
+                let angle = Math.random() * 2 * Math.PI;
+                let dist = 10 + Math.random() * 90; 
+                let dlat = (dist * Math.cos(angle)) / 111320.0;
+                let dlon = (dist * Math.sin(angle)) / (111320.0 * Math.cos(userLat * Math.PI / 180));
+                
+                let t = types[Math.floor(Math.random()*types.length)];
+                let st = states[Math.floor(Math.random()*states.length)];
+                let id = Math.floor(Math.random() * 900) + 10;
+                let name = (t==='ПГ') ? `ПГ-${id} `+(Math.random()>0.5?'К':'Т')+'-'+(Math.floor(Math.random()*8)*50+50) : (t==='ПВ') ? `ПВ-${id} V-`+(Math.floor(Math.random()*20)*50+50) : `${t}-${id}`;
+                
+                markers.push({ name: name, type_base: t, lat: userLat+dlat, lon: userLon+dlon, state: st.name, color: st.color, rgb: st.rgb });
+            }
+            return markers;
+        }
+
+        function getDistanceAndBearing(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            let dLat = (lat2-lat1) * Math.PI/180;
+            let dLon = (lon2-lon1) * Math.PI/180;
+            let l1 = lat1 * Math.PI/180;
+            let l2 = lat2 * Math.PI/180;
+            let a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(l1)*Math.cos(l2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+            let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            let dist = R * c;
+            let y = Math.sin(dLon) * Math.cos(l2);
+            let x = Math.cos(l1)*Math.sin(l2) - Math.sin(l1)*Math.cos(l2)*Math.cos(dLon);
+            let brng = (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
+            return {dist, brng};
+        }
+
+        // --- Audio Beeps ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(freq, duration) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = freq; osc.type = "square";
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration/1000);
+            setTimeout(() => osc.stop(), duration);
+        }
+
+        // --- Init App ---
+        function startApp() {
+            beep(1000, 100); setTimeout(()=>beep(1500, 150), 100);
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'flex';
+            
+            let bgAudio = document.getElementById('bg-audio');
+            bgAudio.volume = 0.6; bgAudio.play().catch(e=>console.log("Audio blocked"));
+
+            let video = document.getElementById('video-bg');
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
+                .then(stream => { 
+                    video.srcObject = stream; 
+                    let track = stream.getVideoTracks()[0];
+                    let settings = track.getSettings();
+                    if(settings.facingMode === 'environment') {
+                        video.style.transform = 'scaleX(1)';
+                    }
+                }).catch(e => console.log("Camera access denied"));
+
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(p => { userLat = p.coords.latitude; userLon = p.coords.longitude; fwsObjects = generateMarkers(); });
+            } else { fwsObjects = generateMarkers(); }
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(r => { if(r==='granted') window.addEventListener('deviceorientation', handleGyro); }).catch(console.error);
+            } else { 
+                window.addEventListener('deviceorientation', handleGyro); 
+            }
+
+            isRunning = true;
+            requestAnimationFrame(drawLoop);
+        }
+
+        // --- Inputs & Gyro Logic ---
+        function handleGyro(e) {
+            if (e.alpha !== null) {
+                hasGyro = true; 
+                userHeading = 360 - e.alpha; 
+                userPitch = (90 - e.beta) * 15; 
+            }
+        }
+
+        let isDragging = false, lastX, lastY;
+        const canvas = document.getElementById('ar-canvas');
+        
+        canvas.addEventListener('mousedown', e => { if(!hasGyro) { isDragging=true; lastX=e.clientX; lastY=e.clientY; }});
+        window.addEventListener('mouseup', () => isDragging=false);
+        window.addEventListener('mousemove', e => {
+            if(isDragging && !hasGyro) {
+                userHeading = (userHeading - (e.clientX - lastX) * 0.25 + 360) % 360;
+                userPitch = Math.max(-800, Math.min(800, userPitch + (e.clientY - lastY) * 1.5));
+                lastX = e.clientX; lastY = e.clientY;
+            }
+        });
+        
+        canvas.addEventListener('touchstart', e => { if(!hasGyro) { isDragging=true; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; }});
+        window.addEventListener('touchend', () => isDragging=false);
+        window.addEventListener('touchmove', e => {
+            if(isDragging && !hasGyro) {
+                userHeading = (userHeading - (e.touches[0].clientX - lastX) * 0.25 + 360) % 360;
+                userPitch = Math.max(-800, Math.min(800, userPitch + (e.touches[0].clientY - lastY) * 1.5));
+                lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (!isRunning || hasGyro) return;
+            const k = e.key.toLowerCase();
+            const step = 0.00001; 
+            
+            if (k === 'a' || k === 'ф') userHeading = (userHeading - 8 + 360) % 360;
+            if (k === 'd' || k === 'в') userHeading = (userHeading + 8) % 360;      
+            if (k === 'w' || k === 'ц') { 
+                userLat += Math.cos(userHeading * Math.PI / 180) * step;
+                userLon += Math.sin(userHeading * Math.PI / 180) * step;
+            }
+            if (k === 's' || k === 'і') { 
+                userLat -= Math.cos(userHeading * Math.PI / 180) * step;
+                userLon -= Math.sin(userHeading * Math.PI / 180) * step;
+            }
+        });
+
+        // --- Buttons Actions ---
+        function changeVision() {
+            beep(1200, 80);
+            visionMode = (visionMode + 1) % 4;
+            document.getElementById('btn-vision').innerText = `VISION: 0${visionMode+1}`;
+            document.getElementById('video-bg').className = `vision-${visionMode}`;
+        }
+        function reloadMarkers() { beep(900, 100); fwsObjects = generateMarkers(); }
+        
+        function toggleMap() {
+            let modal = document.getElementById('map-modal');
+            if (modal.style.display === 'flex') {
+                modal.style.display = 'none'; beep(800, 100);
+            } else {
+                beep(1000, 100); modal.style.display = 'flex';
+                if (!mapObj) {
+                    mapObj = L.map('leaflet-map').setView([userLat, userLon], 18);
+                    
+                    let darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+                    let satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+                    let osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+                    
+                    darkLayer.addTo(mapObj); 
+                    
+                    L.control.layers({
+                        "Тактична (Темна)": darkLayer,
+                        "Супутник": satLayer,
+                        "Схема (Вулиці)": osmLayer
+                    }).addTo(mapObj);
+                }
+                mapMarkers.forEach(m => mapObj.removeLayer(m)); mapMarkers = [];
+                L.marker([userLat, userLon], {icon: L.divIcon({className:'', html: '<div style="width:16px;height:16px;background:#0f0;border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px #0f0"></div>'})}).addTo(mapObj).bindPopup("Ви тут");
+                
+                fwsObjects.forEach(obj => {
+                    let html = `<div class="fws-icon" style="--color: ${obj.color}">`;
+                    
+                    // ДОДАНО: Тепер плашка з іменем виводиться для ВСІХ типів об'єктів
+                    html += `<div class="label-container"><div>${obj.name}</div></div>`;
+                    
+                    if (obj.type_base === 'ПГ') html += `<div class="PG-shape shape"></div>`;
+                    else if (obj.type_base === 'ПП') html += `<div class="PP-shape"></div>`;
+                    else if (obj.type_base === 'ПВ') html += `<div class="PV-shape shape">ПВ</div>`;
+                    else if (obj.type_base === 'ВБ') html += `<div class="VV-shape shape"></div>`;
+                    else if (obj.type_base === 'Г') html += `<div class="GR-shape shape">Г</div>`;
+                    
+                    html += `</div>`;
+                    let m = L.marker([obj.lat, obj.lon], {icon: L.divIcon({html: html, className: 'custom-div-icon', iconSize: [28,28], iconAnchor: [14,14]})}).addTo(mapObj);
+                    m.bindPopup(`<b>${obj.name}</b><br>СТАН: ${obj.state}`);
+                    mapMarkers.push(m);
+                });
+            }
+        }
+
+        // --- AR Drawing Engine ---
+        const ctx = canvas.getContext('2d');
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+        let slideIdx = 0, charCount = 0, lastTypeTime = Date.now(), lastSlideTime = Date.now();
+        let lastGlitchUpdate = Date.now(), currentGlitchStr = "X#@$%&";
+
+        function drawRadar(cx, cy) {
+            let size = 150;
+            ctx.fillStyle = "rgba(0, 20, 0, 0.7)"; ctx.strokeStyle = "#0f0"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(cx, cy, size/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = "rgba(0, 100, 0, 0.8)"; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(cx, cy-size/2); ctx.lineTo(cx, cy+size/2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx-size/2, cy); ctx.lineTo(cx+size/2, cy); ctx.stroke();
+            
+            ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+            ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, size/2, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6); ctx.fill();
+
+            fwsObjects.forEach(obj => {
+                let res = getDistanceAndBearing(userLat, userLon, obj.lat, obj.lon);
+                if (res.dist < 100) {
+                    let angle_rad = (res.brng - userHeading - 90) * Math.PI/180;
+                    let r = (res.dist / 100) * (size/2);
+                    ctx.fillStyle = obj.color;
+                    ctx.beginPath(); ctx.arc(cx + r*Math.cos(angle_rad), cy + r*Math.sin(angle_rad), 4, 0, Math.PI*2); ctx.fill();
+                }
+            });
+            ctx.fillStyle = "#0ff"; ctx.beginPath(); ctx.moveTo(cx, cy-6); ctx.lineTo(cx-5, cy+5); ctx.lineTo(cx+5, cy+5); ctx.fill();
+        }
+
+        function drawMarker(x, y, obj) {
+            let r = 20; ctx.lineWidth = 3; ctx.strokeStyle = obj.color;
+            if(obj.state === 'Демонтовано') ctx.strokeStyle = '#969696';
+            let color = ctx.strokeStyle;
+
+            if (obj.type_base === 'ПГ') {
+                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, r, Math.PI/2, 3*Math.PI/2); ctx.fill();
+                ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, -Math.PI/2, Math.PI/2); ctx.fill();
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x-r-8, y); ctx.lineTo(x-r, y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x+r, y); ctx.lineTo(x+r+8, y); ctx.stroke();
+            } else if (obj.type_base === 'ПВ') {
+                ctx.fillStyle = "rgba(20,20,20,0.8)"; ctx.fillRect(x-r, y-r, r*2, r*2); ctx.strokeRect(x-r, y-r, r*2, r*2);
+                ctx.fillStyle = "#fff"; ctx.font = "bold 14px Arial, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("ПВ", x, y+1);
+            } else if (obj.type_base === 'ПП') {
+                ctx.lineWidth = 3;
+                let d1 = r * 0.4, d2 = r * 0.3;
+                ctx.beginPath(); ctx.moveTo(x-d1, y-r); ctx.lineTo(x-d1, y+r); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x+d2, y-r); ctx.lineTo(x+d2, y+r); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x-r, y-d1); ctx.lineTo(x+r, y-d1); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x-r, y+d2); ctx.lineTo(x+r, y+d2); ctx.stroke();
+            } else if (obj.type_base === 'ВБ') {
+                ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r/2, 0, Math.PI*2); ctx.fill();
+            } else if (obj.type_base === 'Г') {
+                ctx.fillStyle = "rgba(20,20,20,0.8)"; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = "#fff"; ctx.font = "bold 16px Arial, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("Г", x, y+2);
+            }
+        }
+
+        function drawLoop() {
+            if (!isRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let w = canvas.width, h = canvas.height, cx = w/2, cy = h/2;
+            let horizonY = cy - userPitch;
+            
+            let lockedTarget = null, lockedDist = 0;
+            let fov = 60;
+
+            fwsObjects.forEach(obj => {
+                let res = getDistanceAndBearing(userLat, userLon, obj.lat, obj.lon);
+                let adiff = (res.brng - userHeading + 180) % 360 - 180;
+                if (Math.abs(adiff) < fov/2) {
+                    let xPos = cx + (adiff / (fov/2)) * cx;
+                    drawMarker(xPos, horizonY, obj);
+                    if (Math.abs(xPos - cx) < 60 && Math.abs(horizonY - cy) < 60) {
+                        lockedTarget = obj; lockedDist = res.dist;
+                    }
+                }
+            });
+
+            // ЗБІЛЬШЕНИЙ ЦІЛЕВКАЗІВНИК
+            let isFound = lockedTarget && lockedDist < 1.0;
+            ctx.strokeStyle = isFound ? "#0f0" : (lockedTarget ? "#fc0" : "rgba(0,255,200,0.7)");
+            ctx.fillStyle = "#f00"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2); ctx.fill();
+            
+            ctx.lineWidth = 3; 
+            let s = 50, o = 15; // Раніше було s=30, o=10
+            ctx.beginPath();
+            ctx.moveTo(cx-s, cy-o); ctx.lineTo(cx-s, cy-s); ctx.lineTo(cx-o, cy-s);
+            ctx.moveTo(cx+s, cy-o); ctx.lineTo(cx+s, cy-s); ctx.lineTo(cx+o, cy-s);
+            ctx.moveTo(cx-s, cy+o); ctx.lineTo(cx-s, cy+s); ctx.lineTo(cx-o, cy+s);
+            ctx.moveTo(cx+s, cy+o); ctx.lineTo(cx+s, cy+s); ctx.lineTo(cx+o, cy+s);
+            ctx.stroke();
+
+            // ДООПРАЦЬОВАНИЙ ФОН ТЕКСТУ ВІДСТАНІ (Ідеально відцентрований)
+            if (lockedTarget) {
+                let txt = isFound ? "ОБ'ЄКТ ЗНАЙДЕНО" : lockedDist.toFixed(1) + " м";
+                ctx.font = "bold 40px Impact"; 
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle"; // Додано для ідеального позиціонування
+                let tw = ctx.measureText(txt).width;
+                
+                ctx.fillStyle = "rgba(0,0,0,0.7)"; 
+                // Фон починається на Y: cy+50, висота 60px
+                ctx.fillRect(cx - tw/2 - 20, cy + 50, tw + 40, 60); 
+                
+                ctx.fillStyle = isFound ? "#0f0" : "#f00"; 
+                // Текст виводиться чітко посередині фону (cy+50 + 30px = cy+80)
+                ctx.fillText(txt, cx, cy + 80);
+            }
+
+            drawRadar(100, 120);
+
+            let now = Date.now();
+            
+            if (now - lastSlideTime > 15000) { slideIdx = (slideIdx+1)%slides.length; charCount = 0; lastSlideTime = now; }
+            if (now - lastTypeTime > 70) { charCount++; lastTypeTime = now; }
+            
+            if (now - lastGlitchUpdate > 100) {
+                lastGlitchUpdate = now;
+                let glitchChars = "X#@$%&01";
+                currentGlitchStr = "";
+                for(let i=0; i<10; i++) currentGlitchStr += glitchChars[Math.floor(Math.random()*glitchChars.length)];
+                
+                document.getElementById('slide-title').innerText = slides[slideIdx][0];
+                let rawLines = slides[slideIdx][1].split('\n');
+                let outHtml = "", cTotal = 0;
+                
+                for(let l of rawLines) {
+                    let decoded = "", glitch = "", hidden = "";
+                    for(let i=0; i<l.length; i++) {
+                        if (cTotal < charCount) {
+                            decoded += l[i];
+                        } else if (cTotal < charCount + 6) {
+                            glitch += (l[i] === ' ') ? ' ' : (currentGlitchStr[cTotal - charCount] || "X");
+                        } else {
+                            hidden += l[i];
+                        }
+                        cTotal++;
+                    }
+                    // ДОДАНО: -webkit-text-stroke: 1px #000; для глітч тексту
+                    outHtml += `<span>${decoded}</span><span style="color: #0ff; text-shadow: 2px 2px 0 #000; -webkit-text-stroke: 1px #000;">${glitch}</span><span style="opacity: 0;">${hidden}</span><br>`;
+                }
+                document.getElementById('slide-desc').innerHTML = outHtml;
+            }
+
+            requestAnimationFrame(drawLoop);
+        }
+    </script>
+</body>
+</html>
