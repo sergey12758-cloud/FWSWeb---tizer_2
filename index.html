@@ -27,16 +27,19 @@
         .init-btn::after { bottom: -2px; right: -2px; border-bottom: 4px solid #fff; border-right: 4px solid #fff; }
         .init-btn:active { background: #0f0; color: #000; box-shadow: 0 0 30px #0f0; }
 
-        /* UI Overlay змінено, щоб заголовок був відв'язаний від гнучкої сітки */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: none; flex-direction: column; justify-content: flex-end; pointer-events: none; padding: 10px; }
         
-        /* Заголовок слайду тепер жорстко зафіксований праворуч від радару */
+        /* ІДЕАЛЬНЕ ЦЕНТРУВАННЯ ЗАГОЛОВКУ ПРАВОРУЧ ВІД РАДАРА */
         .slide-title { 
             position: absolute; 
-            top: 85px; 
-            left: 150px; 
+            top: 20px; /* Зсув у самий верх екрана */
+            left: 150px; /* Відступ від радара */
+            right: 10px; /* Відступ від правого краю */
+            margin: 0 auto; /* Автоматичне центрування у вільному просторі */
+            width: fit-content; 
+            max-width: calc(100% - 160px); /* Запобігає виходу за межі на вузьких екранах */
             color: #0f0; 
-            font-size: clamp(14px, 4vw, 22px); 
+            font-size: clamp(14px, 3.5vw, 22px); 
             background: rgba(0,0,0,0.7); 
             padding: 5px 15px; 
             border-radius: 5px; 
@@ -137,7 +140,6 @@
         // --- State Variables ---
         let userLat = 49.9935, userLon = 36.2304;
         
-        // Змінні для ПЛАВНОЇ стабілізації
         let userHeading = 0.0, userPitch = 0.0;
         let targetHeading = 0.0, targetPitch = 0.0; 
         
@@ -148,7 +150,6 @@
         let mapMarkers = [];
         let hasGyro = false; 
 
-        // СКОРОЧЕНІ ТА ЛАКОНІЧНІ ТЕКСТИ
         const slides = [
             ["FWSWEB AR-MODULE", "ПРОЕКЦІЯ FWS OBJECTS У REAL-TIME\nМИТТЄВИЙ ПОШУК ДЗППВ В УМОВАХ БОЮ"],
             ["AI-ASSISTANT", "БЕЗПЕРЕРВНИЙ АУДИТ ШТУЧНИМ ІНТЕЛЕКТОМ\nФОКУС НА ОБ'ЄКТАХ, ЩО ПОТРЕБУЮТЬ УВАГИ"],
@@ -258,7 +259,6 @@
                 let orientation = (screen.orientation || {}).angle || window.orientation || 0;
                 let p = 0;
                 
-                // Чутливість гіроскопа ЗМЕНШЕНО з 5 до 3 для ще плавнішого відчуття (Стедікам-ефект)
                 if (orientation === 90) p = (e.gamma || 0) * 3; 
                 else if (orientation === -90 || orientation === 270) p = -(e.gamma || 0) * 3;
                 else p = (90 - (e.beta || 90)) * 3;
@@ -348,7 +348,6 @@
         let lastGlitchUpdate = Date.now(), currentGlitchStr = "X#@$%&";
 
         function drawRadar(cx, cy) {
-            // РОЗМІР РАДАРА ЗБІЛЬШЕНО ДО 120
             let size = 120; 
             ctx.fillStyle = "rgba(0, 20, 0, 0.7)"; ctx.strokeStyle = "#0f0"; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(cx, cy, size/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
@@ -405,7 +404,6 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             let w = canvas.width, h = canvas.height, cx = w/2, cy = h/2;
             
-            // LERP зменшено з 0.1 до 0.04 для максимальної кінематографічної плавності
             userHeading = lerpAngle(userHeading, targetHeading, 0.04);
             userPitch = lerp(userPitch, targetPitch, 0.04);
 
@@ -440,7 +438,6 @@
             ctx.moveTo(cx+s, cy+o); ctx.lineTo(cx+s, cy+s); ctx.lineTo(cx+o, cy+s);
             ctx.stroke();
 
-            // ВІДСТАНЬ ПЕРЕНЕСЕНО НАГОРУ (Над цілевказівником)
             if (lockedTarget) {
                 let txt = isFound ? "ОБ'ЄКТ ЗНАЙДЕНО" : lockedDist.toFixed(1) + " м";
                 ctx.font = "bold 32px Impact"; 
@@ -449,16 +446,12 @@
                 let tw = ctx.measureText(txt).width;
                 
                 ctx.fillStyle = "rgba(0,0,0,0.8)"; 
-                // Відступ 15px над прицілом. Приціл закінчується на cy - 40. 
-                // Отже, низ плашки = cy - 55. Висота плашки 40px -> початок на cy - 95.
                 ctx.fillRect(cx - tw/2 - 15, cy - 95, tw + 30, 40); 
                 
                 ctx.fillStyle = isFound ? "#0f0" : "#f00"; 
-                // Текст по центру плашки
                 ctx.fillText(txt, cx, cy - 75);
             }
 
-            // Малюємо збільшений радар
             drawRadar(80, 100);
 
             let now = Date.now();
