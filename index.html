@@ -29,15 +29,14 @@
 
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: none; flex-direction: column; justify-content: flex-end; pointer-events: none; padding: 10px; }
         
-        /* ІДЕАЛЬНЕ ЦЕНТРУВАННЯ ЗАГОЛОВКУ ПРАВОРУЧ ВІД РАДАРА */
         .slide-title { 
             position: absolute; 
-            top: 20px; /* Зсув у самий верх екрана */
-            left: 150px; /* Відступ від радара */
-            right: 10px; /* Відступ від правого краю */
-            margin: 0 auto; /* Автоматичне центрування у вільному просторі */
+            top: 20px; 
+            left: 150px; 
+            right: 10px; 
+            margin: 0 auto; 
             width: fit-content; 
-            max-width: calc(100% - 160px); /* Запобігає виходу за межі на вузьких екранах */
+            max-width: calc(100% - 160px); 
             color: #0f0; 
             font-size: clamp(14px, 3.5vw, 22px); 
             background: rgba(0,0,0,0.7); 
@@ -251,16 +250,18 @@
             requestAnimationFrame(drawLoop);
         }
 
+        // ВИПРАВЛЕНО: Математика орієнтації гіроскопа для пейзажного (альбомного) режиму
         function handleGyro(e) {
             if (e.alpha !== null) {
                 hasGyro = true; 
                 targetHeading = 360 - e.alpha; 
                 
-                let orientation = (screen.orientation || {}).angle || window.orientation || 0;
+                let orientation = (screen.orientation || {}).angle;
+                if (orientation === undefined) orientation = window.orientation || 0;
                 let p = 0;
                 
-                if (orientation === 90) p = (e.gamma || 0) * 3; 
-                else if (orientation === -90 || orientation === 270) p = -(e.gamma || 0) * 3;
+                if (orientation === 90) p = ((e.gamma || 0) + 90) * 3; 
+                else if (orientation === -90 || orientation === 270) p = (90 - (e.gamma || 0)) * 3;
                 else p = (90 - (e.beta || 90)) * 3;
                 
                 targetPitch = p;
