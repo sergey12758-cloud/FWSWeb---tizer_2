@@ -27,15 +27,25 @@
         .init-btn::after { bottom: -2px; right: -2px; border-bottom: 4px solid #fff; border-right: 4px solid #fff; }
         .init-btn:active { background: #0f0; color: #000; box-shadow: 0 0 30px #0f0; }
 
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: none; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 10px; }
-        .top-bar { text-align: center; padding-top: 10px; }
+        /* UI Overlay змінено, щоб заголовок був відв'язаний від гнучкої сітки */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; display: none; flex-direction: column; justify-content: flex-end; pointer-events: none; padding: 10px; }
         
-        /* Заголовок слайду тепер на плашці, щоб не зливатися з радаром */
-        .slide-title { color: #0f0; font-size: 22px; background: rgba(0,0,0,0.7); display: inline-block; padding: 5px 15px; border-radius: 5px; border: 1px solid #0f0; }
+        /* Заголовок слайду тепер жорстко зафіксований праворуч від радару */
+        .slide-title { 
+            position: absolute; 
+            top: 85px; 
+            left: 150px; 
+            color: #0f0; 
+            font-size: clamp(14px, 4vw, 22px); 
+            background: rgba(0,0,0,0.7); 
+            padding: 5px 15px; 
+            border-radius: 5px; 
+            border: 1px solid #0f0; 
+            white-space: nowrap;
+        }
         
         .bottom-section { display: flex; flex-direction: column; align-items: center; width: 100%; padding-bottom: 5px; }
         
-        /* НОВА ЧИТАБЕЛЬНА ПІДЛОЖКА ДЛЯ ТЕКСТУ */
         .slide-desc-container { 
             background: rgba(0, 0, 0, 0.85); 
             border: 2px solid #0f0; 
@@ -57,7 +67,6 @@
             margin: 0; 
         }
         
-        /* АДАПТИВНІ КНОПКИ В ОДИН РЯДОК */
         .btn-panel { display: flex; gap: 5px; flex-wrap: nowrap; justify-content: center; width: 100%; pointer-events: auto; }
         .sci-fi-btn { 
             background: rgba(10, 10, 10, 0.9); border: 1px solid var(--neon); color: var(--neon); 
@@ -104,9 +113,7 @@
     </div>
 
     <div id="ui-layer">
-        <div class="top-bar">
-            <div id="slide-title" class="slide-title"></div>
-        </div>
+        <div id="slide-title" class="slide-title"></div>
         <div class="bottom-section">
             <div class="slide-desc-container">
                 <div id="slide-desc" class="slide-desc"></div>
@@ -141,7 +148,7 @@
         let mapMarkers = [];
         let hasGyro = false; 
 
-        // СКОРОЧЕНІ ТА ЛАКОНІЧНІ ТЕКСТИ ДЛЯ КРАЩОЇ ЧИТАБЕЛЬНОСТІ
+        // СКОРОЧЕНІ ТА ЛАКОНІЧНІ ТЕКСТИ
         const slides = [
             ["FWSWEB AR-MODULE", "ПРОЕКЦІЯ FWS OBJECTS У REAL-TIME\nМИТТЄВИЙ ПОШУК ДЗППВ В УМОВАХ БОЮ"],
             ["AI-ASSISTANT", "БЕЗПЕРЕРВНИЙ АУДИТ ШТУЧНИМ ІНТЕЛЕКТОМ\nФОКУС НА ОБ'ЄКТАХ, ЩО ПОТРЕБУЮТЬ УВАГИ"],
@@ -188,7 +195,6 @@
             return {dist, brng};
         }
 
-        // Математика для плавності гіроскопу (Лінійна Інтерполяція)
         function lerp(start, end, amt) {
             return (1 - amt) * start + amt * end;
         }
@@ -249,13 +255,13 @@
                 hasGyro = true; 
                 targetHeading = 360 - e.alpha; 
                 
-                // Фікс для горизонтального та вертикального режиму + зменшення чутливості
                 let orientation = (screen.orientation || {}).angle || window.orientation || 0;
                 let p = 0;
                 
-                if (orientation === 90) p = (e.gamma || 0) * 5; 
-                else if (orientation === -90 || orientation === 270) p = -(e.gamma || 0) * 5;
-                else p = (90 - (e.beta || 90)) * 5;
+                // Чутливість гіроскопа ЗМЕНШЕНО з 5 до 3 для ще плавнішого відчуття (Стедікам-ефект)
+                if (orientation === 90) p = (e.gamma || 0) * 3; 
+                else if (orientation === -90 || orientation === 270) p = -(e.gamma || 0) * 3;
+                else p = (90 - (e.beta || 90)) * 3;
                 
                 targetPitch = p;
             }
@@ -342,7 +348,8 @@
         let lastGlitchUpdate = Date.now(), currentGlitchStr = "X#@$%&";
 
         function drawRadar(cx, cy) {
-            let size = 80; // Зменшений радар
+            // РОЗМІР РАДАРА ЗБІЛЬШЕНО ДО 120
+            let size = 120; 
             ctx.fillStyle = "rgba(0, 20, 0, 0.7)"; ctx.strokeStyle = "#0f0"; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(cx, cy, size/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             ctx.strokeStyle = "rgba(0, 100, 0, 0.8)"; ctx.lineWidth = 1;
@@ -398,12 +405,11 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             let w = canvas.width, h = canvas.height, cx = w/2, cy = h/2;
             
-            // ПЛАВНЕ ЗГЛАДЖУВАННЯ (LERP) - УСУВАЄ ТРЯСУЧКУ
-            userHeading = lerpAngle(userHeading, targetHeading, 0.1);
-            userPitch = lerp(userPitch, targetPitch, 0.1);
+            // LERP зменшено з 0.1 до 0.04 для максимальної кінематографічної плавності
+            userHeading = lerpAngle(userHeading, targetHeading, 0.04);
+            userPitch = lerp(userPitch, targetPitch, 0.04);
 
             let horizonY = cy - userPitch;
-            // ЖОРСТКЕ ОБМЕЖЕННЯ ГОРИЗОНТУ (МАРКЕРИ НЕ ЗНИКНУТЬ В АЛЬБОМНОМУ РЕЖИМІ)
             horizonY = Math.max(120, Math.min(h - 180, horizonY)); 
             
             let lockedTarget = null, lockedDist = 0;
@@ -415,7 +421,6 @@
                 if (Math.abs(adiff) < fov/2) {
                     let xPos = cx + (adiff / (fov/2)) * cx;
                     drawMarker(xPos, horizonY, obj);
-                    // ЗБІЛЬШЕНО ЗОНУ ЗАХВАТУ ДО 80px (ЛЕГШЕ ПРИЦІЛИТИСЯ)
                     if (Math.abs(xPos - cx) < 80 && Math.abs(horizonY - cy) < 80) {
                         lockedTarget = obj; lockedDist = res.dist;
                     }
@@ -435,7 +440,7 @@
             ctx.moveTo(cx+s, cy+o); ctx.lineTo(cx+s, cy+s); ctx.lineTo(cx+o, cy+s);
             ctx.stroke();
 
-            // ВІДСТАНЬ ДО ОБ'ЄКТА (Трохи піднята, щоб не закривати текст)
+            // ВІДСТАНЬ ПЕРЕНЕСЕНО НАГОРУ (Над цілевказівником)
             if (lockedTarget) {
                 let txt = isFound ? "ОБ'ЄКТ ЗНАЙДЕНО" : lockedDist.toFixed(1) + " м";
                 ctx.font = "bold 32px Impact"; 
@@ -444,13 +449,17 @@
                 let tw = ctx.measureText(txt).width;
                 
                 ctx.fillStyle = "rgba(0,0,0,0.8)"; 
-                ctx.fillRect(cx - tw/2 - 15, cy + 30, tw + 30, 40); 
+                // Відступ 15px над прицілом. Приціл закінчується на cy - 40. 
+                // Отже, низ плашки = cy - 55. Висота плашки 40px -> початок на cy - 95.
+                ctx.fillRect(cx - tw/2 - 15, cy - 95, tw + 30, 40); 
                 
                 ctx.fillStyle = isFound ? "#0f0" : "#f00"; 
-                ctx.fillText(txt, cx, cy + 50);
+                // Текст по центру плашки
+                ctx.fillText(txt, cx, cy - 75);
             }
 
-            drawRadar(60, 100);
+            // Малюємо збільшений радар
+            drawRadar(80, 100);
 
             let now = Date.now();
             
@@ -479,7 +488,6 @@
                         }
                         cTotal++;
                     }
-                    // ЧИСТИЙ ТЕКСТ БЕЗ ТІНЕЙ, ЧИТАЄТЬСЯ ІДЕАЛЬНО
                     outHtml += `<span>${decoded}</span><span style="color: #0ff;">${glitch}</span><span style="opacity: 0;">${hidden}</span><br>`;
                 }
                 document.getElementById('slide-desc').innerHTML = outHtml;
